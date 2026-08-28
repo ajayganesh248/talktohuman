@@ -40,16 +40,20 @@ export async function POST(req) {
 
   const senderType = callerIsAdmin ? "admin" : "user";
 
-  const { error: insertErr } = await db.from("messages").insert({
-    room_id: roomId,
-    sender_type: senderType,
-    sender_id: caller.id,
-    content: trimmed,
-  });
+  const { data: inserted, error: insertErr } = await db
+    .from("messages")
+    .insert({
+      room_id: roomId,
+      sender_type: senderType,
+      sender_id: caller.id,
+      content: trimmed,
+    })
+    .select("id, created_at")
+    .single();
 
   if (insertErr) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, id: inserted.id, created_at: inserted.created_at });
 }
