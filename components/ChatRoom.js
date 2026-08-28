@@ -58,7 +58,12 @@ export default function ChatRoom({
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
+          // Skip messages we already added optimistically (own sends) —
+          // avoids the same message flashing in twice.
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
         }
       )
       .on(
@@ -93,11 +98,40 @@ export default function ChatRoom({
 
     setSending(true);
     setText("");
+
+    // Show the message immediately (optimistic UI) instead of waiting
+    // for the server round-trip + realtime echo — feels instant.
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg = {
+      id: tempId,
+      sender_type: senderType,
+      sender_id: senderId,
+      content,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     try {
-      await authFetch("/api/chat/send", {
+      const res = await authFetch("/api/chat/send", {
         method: "POST",
         body: JSON.stringify({ roomId, content }),
       });
+      const data = await res.json();
+
+      if (res.ok && data.id) {
+        // Swap the temp message for the real one so the realtime
+        // INSERT event (which arrives with the same id) gets deduped.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId ? { ...m, id: data.id, created_at: data.created_at } : m
+          )
+        );
+      } else {
+        // Failed to send — remove the optimistic bubble.
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
     } finally {
       setSending(false);
     }
