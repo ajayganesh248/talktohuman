@@ -18,13 +18,15 @@ export async function POST(req) {
   }
 
   const db = getSupabaseAdmin();
-  const callerIsAdmin = await isAdmin(caller.id);
 
-  const { data: room, error: roomErr } = await db
-    .from("chat_rooms")
-    .select("id, status, user_auth_id")
-    .eq("id", roomId)
-    .single();
+  // Run independent checks together instead of one after another —
+  // cuts a full network round-trip off every message send.
+  const [callerIsAdmin, roomResult] = await Promise.all([
+    isAdmin(caller.id),
+    db.from("chat_rooms").select("id, status, user_auth_id").eq("id", roomId).single(),
+  ]);
+
+  const { data: room, error: roomErr } = roomResult;
 
   if (roomErr || !room) {
     return NextResponse.json({ error: "Room not found" }, { status: 404 });
