@@ -58,8 +58,11 @@ export default function ChatRoom({
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          // Skip messages we already added optimistically (own sends) —
-          // avoids the same message flashing in twice.
+          // Our own sends are already shown optimistically by sendMessage()
+          // — skip them here to avoid a duplicate bubble (and the race
+          // where this event can arrive before the fetch() response does).
+          if (payload.new.sender_type === senderType) return;
+
           setMessages((prev) => {
             if (prev.some((m) => m.id === payload.new.id)) return prev;
             return [...prev, payload.new];
